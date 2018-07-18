@@ -11,27 +11,23 @@ import ServiceManagement
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
+    let helperAppIdentifier = "com.kdembler.SpotifyBarHelper"
+    let geniusToken = "8W9Uq9vyoFPNTiIL3djSBxhrcSdO9J2oWRiuhqynWcr44W3Dy1i3q8DqcPFR34zd"
     
     var statusBarItem: NSStatusItem = NSStatusItem()
     var menu: NSMenu = NSMenu()
     var trackInfoMenuItem: NSMenuItem =  NSMenuItem()
+    var startupInfoMenuItem: NSMenuItem = NSMenuItem()
+    
     var timer: Timer = Timer()
+    
     var artist = ""
     var track = ""
-    var bearerToken = "8W9Uq9vyoFPNTiIL3djSBxhrcSdO9J2oWRiuhqynWcr44W3Dy1i3q8DqcPFR34zd"
+    
+    var runOnStartup = false
     let defaults = UserDefaults.standard
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        let appBundleIdentifier = "com.kdembler.SpotifyBarHelper"
-        let autoLaunch = true
-        if SMLoginItemSetEnabled(appBundleIdentifier as CFString, autoLaunch) {
-            NSLog("Successfully add login item.")
-        } else {
-            NSLog("Failed to add login item.")
-        }
-        if let defaultToken = defaults.string(forKey: "bearerToken") {
-            bearerToken = defaultToken
-        }
         statusBarItem = NSStatusBar.system.statusItem(withLength: -1)
         statusBarItem.image = #imageLiteral(resourceName: "Icon")
         statusBarItem.highlightMode = true
@@ -40,9 +36,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         trackInfoMenuItem.title = "SpotifyBar"
         menu.addItem(trackInfoMenuItem)
         fetch()
-        timer = Timer.scheduledTimer(timeInterval: 15, target: self, selector: #selector(fetch), userInfo: nil, repeats: true)
+        timer = Timer.scheduledTimer(timeInterval: 10, target: self, selector: #selector(fetch), userInfo: nil, repeats: true)
         
         menu.addItem(NSMenuItem.separator())
+        
+        runOnStartup = defaults.bool(forKey: "runOnStartup")
+        
+        startupInfoMenuItem = NSMenuItem()
+        startupInfoMenuItem.title = "Run on startup"
+        startupInfoMenuItem.action = #selector(toggleStartup)
+        updateStartupItemState()
+        menu.addItem(startupInfoMenuItem)
+        
         
         let quitItem = NSMenuItem()
         quitItem.title = "Quit"
@@ -70,7 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let searchURL = URL(string: apiPrefix) else { return }
         var request = URLRequest(url: searchURL)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(geniusToken)", forHTTPHeaderField: "Authorization")
         let task = URLSession.shared.dataTask(with: request) {
             (data, response, error) in
             if error == nil, let result = data {
@@ -99,6 +104,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         task.resume()
     }
     
+    @objc func toggleStartup() {
+        self.runOnStartup = !self.runOnStartup
+        updateStartupItemState()
+        self.defaults.set(self.runOnStartup, forKey: "runOnStartup")
+        if SMLoginItemSetEnabled(self.helperAppIdentifier as CFString, self.runOnStartup) {
+            if self.runOnStartup {
+                Swift.print("Successfully added login item")
+            } else {
+                Swift.print("Successfully removed login item")
+            }
+        } else {
+            Swift.print("Failed to set log item")
+        }
+    }
+    
+    @objc func updateStartupItemState() {
+        if self.runOnStartup {
+            self.startupInfoMenuItem.state = .on
+        } else {
+            self.startupInfoMenuItem.state = .off
+        }
+    }
+    
     @objc func quit() {
         NSApplication.shared.terminate(self)
     }
@@ -113,7 +141,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 v = "\(self.track) by \(self.artist)"
                 self.trackInfoMenuItem.action = #selector(self.getLyrics)
             } catch {
-                v = "Fetch error"
+                v = "Couldn't fetch data from Spotify"
                 self.trackInfoMenuItem.action = nil
             }
             Swift.print(v)
